@@ -1,0 +1,400 @@
+---
+title: "Logistic_Regression"
+author: "Aleksandra Kalisz"
+date: "2023-05-04"
+output: html_document
+---
+
+
+```{r}
+# Loading Libraries
+library(tidyverse)
+library(caret)
+library(e1071)
+library(corrplot)
+library(ggplot2)
+library(car)
+
+```
+1. The Data
+
+```{r}
+# Reading Data
+diabetes <- read.csv("Diabetes Dataset.csv", header = TRUE)
+
+```
+
+
+2. Exploring Data and data wrangling
+
+```{r}
+# Checking the data for its structure using str() function
+str(diabetes)
+# Checking summary of statistical properties using summary() function
+summary(diabetes)
+
+```
+
+```{r}
+# Remove "P" class data entries
+diabetes <- diabetes[diabetes$CLASS != "P",]
+
+# Removing unnecessary variables from data
+diabetes <- subset(diabetes, select = -c(ID, No_Pation))
+
+# checking missing Values
+sum(is.na(diabetes))
+
+```
+
+
+
+```{r}
+# Transforming variables
+# Recording character string "Gender" and "CLASS" to a binary variable
+diabetes$Gender <- ifelse(diabetes$Gender =="F", 0, 1)
+diabetes$CLASS <- ifelse(diabetes$CLASS =="Y", 0, 1)
+
+
+
+# Transforming AGE and Cr to numeric values
+diabetes$AGE <- as.numeric(diabetes$AGE)
+diabetes$Cr <- as.numeric(diabetes$Cr)
+
+
+
+# final check of the data
+str(diabetes)
+```
+
+
+```{r}
+# creating histograms with density function for normal distribution and checking if to transform the data.
+histogram <- function(x)
+{
+title <- paste(deparse(substitute(x), 500), collapse="\n")
+sdx <- sd(x)
+mx <- mean(x)
+hist(x, prob=TRUE,
+main=paste("Histogram of",title),
+xlim=c(mx-3*sdx, mx+3*sdx), ylim=c(0, 0.5/sdx))
+curve(dnorm(x, mean=mx, sd=sdx), col='red', lwd=3, add=TRUE)
+}
+
+par(mfrow=c(2,2))
+
+histogram(diabetes$AGE)
+histogram(diabetes$Urea)
+histogram(diabetes$Cr)
+histogram(diabetes$HbA1c)
+histogram(diabetes$Chol)
+histogram(diabetes$TG)
+histogram(diabetes$HDL)
+histogram(diabetes$LDL)
+histogram(diabetes$VLDL)
+histogram(diabetes$BMI)
+
+
+```
+
+Adding needed Transformed variables to data
+```{r}
+ 
+# Transform Urea variable using log transformation
+diabetes$Urea <- log(diabetes$Urea)
+
+# Transform HbA1c variable using square root transformation
+diabetes$HbA1c <- sqrt(diabetes$HbA1c)
+
+# Transform LDL variable using reciprocal transformation
+diabetes$LDL <- 1/diabetes$LDL
+
+# Transform VLDL variable using natural logarithm transformation
+diabetes$VLDL <- log(diabetes$VLDL)
+
+# Transform BMI variable using square transformation
+diabetes$BMI <- log(diabetes$BMI)
+
+```
+
+
+```{r}
+# creating histograms with density function for normal distribution for transformed data  to check the distribution again
+histogram <- function(x) {
+  title <- paste(deparse(substitute(x), 500), collapse="\n")
+  sdx <- sd(x)
+  mx <- mean(x)
+  xlim <- c(mx-3*sdx, mx+3*sdx)
+  if (is.finite(xlim[1]) && is.finite(xlim[2])) {
+    hist(x, prob=TRUE, main=paste("Histogram of",title), xlim=xlim, ylim=c(0, 0.5/sdx))
+    curve(dnorm(x, mean=mx, sd=sdx), col='red', lwd=3, add=TRUE)
+  }
+}
+
+
+par(mfrow=c(2,2))
+histogram(diabetes$Urea)
+histogram(diabetes$HbA1c)
+histogram(diabetes$Chol)
+histogram(diabetes$LDL)
+histogram(diabetes$VLDL)
+histogram(diabetes$BMI)
+
+```
+
+```{r}
+# Printing the names of variables to make sure that they have been added to dataset
+names(diabetes)
+```
+
+3. Exploratory Data Analysis
+
+ Performing exploratory data analysis to gain insights into the relationships between the variables and the target variable. It is good to use various visualization techniques like histograms, scatterplots, and correlation matrix to have good understanding of the data.
+```{r}
+# Histogram of Age by Diabetes Status
+ggplot(diabetes, aes(x = AGE, fill = factor(CLASS))) + 
+  geom_histogram(binwidth = 5, alpha = 0.7) + 
+  labs(title = "Histogram of Age by Diabetes Status")
+
+# Density Plot of Urea by Diabetes Status
+ggplot(diabetes, aes(x = Urea, fill = CLASS)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Density and Histogram of Urea by Diabetes Status")
+
+
+# Scatterplot of Age and BMI by Diabetes Status
+ggplot(diabetes, aes(x = AGE, y = BMI, color = CLASS)) + geom_point() + labs(title = "Scatterplot of Age and BMISq by Diabetes Status")
+
+#Density plot of HbA1c by Diabetes Status
+ggplot(diabetes, aes(x = HbA1c, fill = CLASS)) +
+  geom_density(alpha = 0.7) + 
+  labs(title = "Density plot of HbA1c by Diabetes Status", x = "HbA1c")
+
+
+# Correlation plot of all Variables
+corrplot(cor(diabetes[, c("AGE", "Urea", "Cr", "HbA1c", "TG", "Chol", "HDL", "LDL", "VLDL", "BMI")]), 
+         method = "color", 
+         tl.col = "black", 
+         tl.srt = 25)
+
+ggplot(diabetes, aes(x = CLASS, y = Cr)) +
+  geom_jitter(aes(color = CLASS), alpha = 0.5, width = 0.2) +
+  labs(x = "Diabetes Status", y = "Creatinine") +
+  ggtitle("Creatinine levels by Diabetes Status")
+
+
+```
+Looking at the outliers in Creatinine levels it is possible that we have to remove them as there are only 5 odd points at the level of 800
+
+```{r}
+# removing the outliers
+ggplot(subset(diabetes, Cr < 800), aes(x = CLASS, y = Cr)) +
+  geom_jitter(aes(color = CLASS), alpha = 0.5, width = 0.2) +
+  labs(x = "Diabetes Status", y = "Creatinine") +
+  ggtitle("Creatinine levels by Diabetes Status")
+
+```
+
+```{r}
+# saving the data set without the outliers 
+diabetes <- diabetes[diabetes$Cr < 800,]
+
+# create boxplots of all variables except "CLASS" with a new dataset withou the ouliers
+boxplot_data <- diabetes[, -12] # exclude "CLASS" variable
+boxplot_data <- stack(boxplot_data) # reshape data for plotting
+ggplot(boxplot_data, aes(x = ind, y = values, fill = ind)) + 
+  geom_boxplot() + 
+  labs(title = "Boxplots of Diabetes Variables")
+```
+
+###############    Checking how the bloxplot would look if more outlies were removed   ################
+```{r}
+diabetes_no_outliers_1500_units <- diabetes[diabetes$Cr < 1500,]
+
+# create boxplots of all variables except "CLASS"
+boxplot_data <- diabetes_no_outliers[, -12] # exclude "CLASS" variable
+boxplot_data <- stack(boxplot_data) # reshape data for plotting
+ggplot(boxplot_data, aes(x = ind, y = values, fill = ind)) + 
+  geom_boxplot() + 
+  labs(title = "Boxplots of Diabetes Variables")
+```
+#####################   End of Experiment ############################
+
+
+
+4. Splitting the Data
+
+
+The next step is to split the dataset into training and test datasets. Using createDataPartition() function from the caret library to split the data randomly.
+```{r}
+#The next step is to split the dataset into training and test datasets. Using createDataPartition() function from the caret library to split the data randomly.
+set.seed(123)
+index <- createDataPartition(diabetes$CLASS, p = 0.7, list = FALSE)
+train <- diabetes[index,]
+test <- diabetes[-index,]
+
+
+```
+
+Using binary logistic regression model to predict diabetes diagnosis using the training data. The glm() function is used to fit the model, with the CLASS variable as the response variable and the other variables as predictors. The family argument is set to "binomial" to specify a binary logistic regression model.
+```{r}
+# fitting a binary logistic regression model to predict diabetes diagnosis.
+reg_model <- glm(CLASS ~ AGE + Urea + Cr + HbA1c + Chol + TG + HDL + LDL + VLDL + BMI, 
+             data = train, family = binomial)
+
+summary(reg_model)
+
+```
+
+
+```{r}
+# fit a binary logistic regression model to predict diabetes diagnosis with the significant variables only
+new_model <- glm(formula = CLASS ~ HbA1c + BMI  + Chol + TG, family = binomial, data = train)
+summary(new_model)
+```
+
+
+# Generating predicted values for the test data using the fitted new_model. The predict() function is used to generate predicted probabilities for each observation in the test data. The type argument is set to "response" to specify that predicted probabilities should be generated rather than predicted class labels.
+```{r}
+# Predict the class labels for the test set
+predictions <- predict(new_model, new_data = test, type = "response")
+
+## Converting the predicted probabilities to predicted class labels by setting a threshold of 0.5. If the predicted probability is greater than 0.5, the corresponding observation is predicted to be in class "Y", otherwise it is predicted to be in class "N".
+predicted_classes <- ifelse(predictions > 0.5, "N", "Y")
+```     
+
+```{r}
+# confusion matrix
+confusion_matrix <- table(test$CLASS, pred_class)
+confusion_matrix
+```
+
+
+
+Calculating the accuracy, sensitivity, and specificity of the model on the test data using the confusion matrix. The accuracy is calculated as the proportion of correctly predicted observations, the precision is calculated as the proportion of true positives (predicted diabetic cases among actual diabetic cases), and the Recall is calculated as the proportion of true negatives (predicted non-diabetic cases among actual non-diabetic cases).
+```{r}
+# calculate the accuracy, sensitivity, and specificity of the model on the test data
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+pecision <- confusion_matrix[2, 2] / sum(confusion_matrix[2, ])
+recall<- confusion_matrix[2, 2] / sum(confusion_matrix[2, ])
+
+# print the confusion matrix and performance metrics
+cat("Confusion Matrix:\n", confusion_matrix, "\n\n")
+cat("Accuracy: ", round(accuracy, 3), "\n")
+cat("Precission: ", round(sensitivity, 3), "\n")
+cat("Recall: ", round(specificity, 3), "\n")
+
+
+F1 <- 2 * precision * recall / (precision + recall)
+cat("Score F1:", round(F1, 3), "\n")
+```
+
+5. Testing the model on "P" part of the data
+
+
+# Testing the final model on the CLASS=='P' cases by generating predicted probabilities for those cases and calculating the average probability of being diagnosed as diabetic. The predict() function is used again to generate predicted probabilities for the CLASS=='P' cases in the original diabetes_data dataframe. The mean() function is used to calculate the average probability of being diagnosed as diabetic among these cases.
+
+Finally, the cat() function is used to print the average probability to the console, with the round() function used to round the value to three decimal places.
+
+```{r}
+# testing the model on the CLASS=='P' cases
+
+predictions1 <- predict(new_model, new_data1 = diabetes[diabetes$CLASS == "P", ], type = "response")
+prob_diabetic_p <- mean(predictions1 > 0.5)
+
+cat("Probability of 'P' cases being diagnosed as diabetic: ", round(prob_diabetic_p, 3))
+
+```
+
+
+
+
+6. Checking the assumptions
+
+
+Finally, checking whether there is multicollinearity among the predictor variables, whether the relationship between the predictor variables and the outcome variable is linear, and whether there are outliers or influential observations that may affect the model.
+
+```{r}
+
+# Checking for multicollinearity
+vif(new_model)
+
+
+
+# checking relationship between the predictor variables and the outcome variable linearity
+prob <- predict(new_model, type="response")
+log_odds <- log(prob/(1-prob))
+
+  ggplot(data = train, aes(x = HbA1c, y = log_odds)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggtitle("HbA1c vs. log odds of diabetes") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  scale_y_reverse()
+
+
+  ggplot(data = train, aes(x = BMI, y = log_odds)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggtitle("BMI vs. log odds of diabetes") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+   scale_y_reverse()
+  
+  
+  ggplot(data = train, aes(x = Chol, y = log_odds)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggtitle("Colesterol vs. log odds of diabetes") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+   scale_y_reverse()
+  
+  ggplot(data = train, aes(x = TG, y = log_odds)) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  ggtitle("Triglycerides  vs. log odds of diabetes") +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  scale_y_reverse()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
