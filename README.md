@@ -5,7 +5,7 @@
 Aleksandra Kalisz  
 Postgraduate Diploma in Science in Data Analytics  
 National College of Ireland, Dublin, Ireland  
-Email: 21118876@student.ncirl.ie  
+Email: alexkalisz@gmail.com
 
 ## Project Overview
 
